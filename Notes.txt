@@ -1,0 +1,2 @@
+- Architecture questions
+    1. Why query based tenant filtering used when db has that out of the box?

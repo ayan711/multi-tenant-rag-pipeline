@@ -1,0 +1,103 @@
+# ============================================================
+# Enterprise RAG — Python Dependencies (locked versions)
+# ============================================================
+# All versions are pinned (==) to make the environment fully
+# reproducible. "pip install -r requirements.txt" should
+# produce bit-for-bit the same environment on any machine.
+#
+# INSTALL ORDER NOTE:
+#   PyTorch is a heavy dependency of sentence-transformers and
+#   is NOT listed here because the right variant depends on
+#   your hardware (CPU-only vs CUDA). Install it first:
+#     pip install torch --index-url https://download.pytorch.org/whl/cpu
+#   Then run:
+#     pip install -r requirements.txt
+# ============================================================
+
+
+# --- Web Framework -----------------------------------------------------------
+
+# FastAPI: the async HTTP framework that powers our /upload and /query routes.
+# We choose it over Flask because it has native async support (critical for
+# non-blocking Celery dispatch) and auto-generates OpenAPI docs for free.
+fastapi==0.115.5
+
+# Uvicorn: the ASGI server that runs the FastAPI app.
+# [standard] installs the optional speedups (uvloop, httptools).
+uvicorn[standard]==0.32.1
+
+# python-multipart: FastAPI requires this to parse multipart/form-data,
+# which is how browsers and curl send file uploads.
+python-multipart==0.0.20
+
+
+# --- Configuration -----------------------------------------------------------
+
+# pydantic-settings: reads environment variables from .env files and validates
+# their types. Used in config.py to build a typed Settings object.
+# Separates secrets from code — a 12-factor app requirement.
+pydantic-settings==2.6.1
+
+
+# --- PDF Parsing -------------------------------------------------------------
+
+# PyMuPDF (imported as `fitz`): the fastest pure-Python PDF parser.
+# We use it in parser.py to extract text page-by-page before chunking.
+# "MuPDF" is the underlying C library; this is its Python binding.
+PyMuPDF==1.24.14
+
+
+# --- Embeddings (local, zero-cost) -------------------------------------------
+
+# sentence-transformers: wraps Hugging Face transformer models to produce
+# dense vector embeddings from text. We use all-MiniLM-L6-v2, which outputs
+# 384-dimensional vectors — small enough to run fast on CPU.
+sentence-transformers==3.3.1
+
+# numpy: sentence-transformers returns numpy arrays; we also use it when
+# building batch embedding calls in embedder.py.
+numpy==2.2.0
+
+
+# --- NLP Utilities -----------------------------------------------------------
+
+# nltk: provides sent_tokenize for sentence-boundary chunking (Task 2.6).
+# Only punkt_tab data is required; download once with nltk.download('punkt_tab').
+nltk==3.9.4
+
+
+# --- Vector Database ---------------------------------------------------------
+
+# chromadb: our self-hosted vector store. We connect to it via HttpClient,
+# pointing at the Docker container. Stores vectors + metadata, and lets us
+# filter by tenant_id on every query (the multi-tenant isolation mechanism).
+chromadb==0.5.23
+
+
+# --- Async Task Queue --------------------------------------------------------
+
+# celery: the distributed task queue. Receives "ingest this PDF" jobs from
+# FastAPI and processes them in a background worker process — keeping HTTP
+# response times fast even when PDF parsing takes several seconds.
+celery==5.4.0
+
+# redis (Python client): the transport layer between FastAPI and Celery.
+# Celery uses Redis as its message *broker* (where tasks wait to be picked up)
+# and as its *result backend* (where task status/results are stored).
+redis==5.2.1
+
+
+# --- LLM (answer generation) -------------------------------------------------
+
+# openai: the official Python SDK for the OpenAI API. We use it in the query
+# route to call gpt-4o-mini at temperature=0.0 for deterministic, grounded
+# answers. Cost is kept low by only sending retrieved context chunks, not the
+# full document.
+openai==1.57.4
+
+
+# --- HTTP client (internal) --------------------------------------------------
+
+# httpx: async HTTP client used by ChromaDB's HttpClient internally.
+# Pinning it prevents surprise breakage if chromadb relaxes its own constraint.
+httpx==0.28.1
