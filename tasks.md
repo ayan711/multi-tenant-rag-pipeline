@@ -12,9 +12,9 @@ Production-grade, zero-cost Document Q&A engine. Work through tasks sequentially
 | 2 — Data Extraction & Embedding | 6 | 6 |
 | 3 — Vector Database Layer | 6 | 6 |
 | 4 — Async Processing Engine | 5 | 5 |
-| 5 — FastAPI Gateway | 7 | 9 |
-| 6 — System Validation | 0 | 5 |
-| 7 — Demo & Interview Readiness | 0 | 2 |
+| 5 — FastAPI Gateway | 9 | 9 |
+| 6 — System Validation | 5 | 5 |
+| 7 — Demo & Interview Readiness | 1 | 2 |
 
 ---
 
@@ -126,7 +126,7 @@ Production-grade, zero-cost Document Q&A engine. Work through tasks sequentially
   - Hash the uploaded file bytes immediately after read.
   - Save to a temp path named by the hash for deduplication.
 
-- [ ] **Task 5.4** — Async Task Dispatch
+- [x] **Task 5.4** — Async Task Dispatch
   - Call `ingest_document_pipeline.delay(path, tenant_id, file_hash)`.
   - Return `202 Accepted` with `{task_id}`.
 
@@ -145,7 +145,7 @@ Production-grade, zero-cost Document Q&A engine. Work through tasks sequentially
 - [x] **Task 5.8** — Streaming Query Response
   - Refactor `/api/v1/query` to use `stream=True` + `StreamingResponse` with an async generator.
 
-- [ ] **Task 5.9** — Task Status Endpoint
+- [x] **Task 5.9** — Task Status Endpoint
   - `GET /api/v1/tasks/{task_id}` — proxy `AsyncResult(task_id)`.
   - Return `{status: PENDING|SUCCESS|FAILURE, result?, error?}`.
 
@@ -153,19 +153,19 @@ Production-grade, zero-cost Document Q&A engine. Work through tasks sequentially
 
 ## 🚀 Phase 6 — System Validation & Interview Demos
 
-- [ ] **Task 6.1** — Full Stack Startup
+- [x] **Task 6.1** — Full Stack Startup
   - Docker services up → Celery worker running → Uvicorn on port `8001`.
 
-- [ ] **Task 6.2** — Upload Smoke Test
+- [x] **Task 6.2** — Upload Smoke Test
   - `curl` a real PDF to `/api/v1/docs/upload` and confirm a `task_id` comes back.
 
-- [ ] **Task 6.3** — Query Verification
+- [x] **Task 6.3** — Query Verification
   - Ask a question about the uploaded PDF and verify the answer is grounded in the document.
 
-- [ ] **Task 6.4** — Multi-Tenant Isolation Audit
+- [x] **Task 6.4** — Multi-Tenant Isolation Audit
   - Ask the same question under a different `tenant_id` — confirm no data leaks across tenants.
 
-- [ ] **Task 6.5** — Retrieval Quality Evaluation
+- [x] **Task 6.5** — Retrieval Quality Evaluation
   - Write 5 questions with known answers for a test PDF.
   - Compare accuracy at `n_results=3` vs `n_results=8` — observe precision/recall tradeoff firsthand.
 
@@ -173,9 +173,9 @@ Production-grade, zero-cost Document Q&A engine. Work through tasks sequentially
 
 ## 🎓 Phase 7 — Demo & Interview Readiness
 
-- [ ] **Task 7.1** — Streamlit UI
+- [x] **Task 7.1** — Streamlit UI
   - Single-page app (`ui.py`): file uploader + chat input wired to the FastAPI endpoints.
 
 - [ ] **Task 7.2** — Architecture Diagram & README
-  - Data-flow diagram: ingest path (PDF → Parser → Embedder → ChromaDB) and query path (Query → Embedder → ChromaDB → OpenAI → Response).
-  - `README.md` covering setup, env vars, and how to run each component.
+  - [x] Data-flow diagrams in `architecture.md`: system overview, ingestion, query (RAG), task-status poll, deletion, tenant isolation, Streamlit UI session, deployment topology — updated for Gemini/storage-abstraction/UI and annotated with WHY notes per diagram.
+  - [ ] `README.md` covering setup, env vars, and how to run each component. (`RUNNING.md` covers the "how to run" part already; README still pending.)

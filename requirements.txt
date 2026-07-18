@@ -101,3 +101,17 @@ openai==1.57.4
 # httpx: async HTTP client used by ChromaDB's HttpClient internally.
 # Pinning it prevents surprise breakage if chromadb relaxes its own constraint.
 httpx==0.28.1
+
+# requests: synchronous HTTP client used by ui.py to call the FastAPI gateway.
+# Separate from httpx (async, internal to chromadb) — ui.py is a plain script,
+# not an async context, so the sync client is the simpler fit.
+requests==2.34.2
+
+
+# --- Demo UI (Phase 7) -------------------------------------------------------
+
+# streamlit: renders ui.py — file uploader + chat wired to the FastAPI routes.
+# Only needed for the interview demo, not the API/worker themselves.
+# Pinned below the version where Streamlit's native ASGI app started requiring
+# a newer starlette (DEFAULT_EXCLUDED_CONTENT_TYPES) than FastAPI 0.115.5 pins.
+streamlit==1.40.2

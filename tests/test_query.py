@@ -15,7 +15,7 @@ Covers:
   - No documents for tenant → 404 (raised before streaming starts)
   - Tenant ID is forwarded to vector_store (isolation guarantee)
   - Embedder is called with the exact query text
-  - OpenAI client is called with stream=True, temperature=0.0, correct model
+  - LLM client is called with stream=True, temperature=0.0, correct model
   - Dependency injection: all three singletons can be swapped via overrides
 """
 
@@ -25,7 +25,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from app.dependencies import get_embedder, get_openai_client, get_vector_store
+from app.dependencies import get_embedder, get_llm_client, get_vector_store
 from app.main import app
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ def _mock_stream_chunk(content: str | None):
     return MagicMock(choices=[MagicMock(delta=MagicMock(content=content))])
 
 
-async def _fake_openai_stream(tokens: list[str]):
+async def _fake_llm_stream(tokens: list[str]):
     for token in tokens:
         yield _mock_stream_chunk(token)
 
@@ -65,20 +65,20 @@ def mock_vector_store():
 
 
 @pytest.fixture
-def mock_openai_client():
+def mock_llm_client():
     m = AsyncMock()
     # create() is awaited, then the resolved value is async-iterated over —
     # so return_value must itself be an async generator, not a coroutine.
-    m.chat.completions.create.return_value = _fake_openai_stream(_FAKE_TOKENS)
+    m.chat.completions.create.return_value = _fake_llm_stream(_FAKE_TOKENS)
     return m
 
 
 @pytest.fixture
-def client(mock_embedder, mock_vector_store, mock_openai_client):
+def client(mock_embedder, mock_vector_store, mock_llm_client):
     """TestClient with all three heavy dependencies replaced by lightweight mocks."""
     app.dependency_overrides[get_embedder] = lambda: mock_embedder
     app.dependency_overrides[get_vector_store] = lambda: mock_vector_store
-    app.dependency_overrides[get_openai_client] = lambda: mock_openai_client
+    app.dependency_overrides[get_llm_client] = lambda: mock_llm_client
     yield TestClient(app)
     app.dependency_overrides.clear()
 
@@ -165,12 +165,12 @@ def test_tenant_id_is_not_leaked_across_tenants(mock_embedder):
     store_b = MagicMock()
     store_b.search_tenant_context.return_value = _FAKE_CHUNKS
 
-    client_a_openai = AsyncMock()
-    client_a_openai.chat.completions.create.return_value = _fake_openai_stream(_FAKE_TOKENS)
+    client_a_llm = AsyncMock()
+    client_a_llm.chat.completions.create.return_value = _fake_llm_stream(_FAKE_TOKENS)
 
     app.dependency_overrides[get_embedder] = lambda: mock_embedder
     app.dependency_overrides[get_vector_store] = lambda: store_a
-    app.dependency_overrides[get_openai_client] = lambda: client_a_openai
+    app.dependency_overrides[get_llm_client] = lambda: client_a_llm
     client_a = TestClient(app)
     _query(client_a, tenant_id="acme")
     store_a.search_tenant_context.assert_called_once_with(_FAKE_VECTOR, "acme")
@@ -182,13 +182,13 @@ def test_tenant_id_is_not_leaked_across_tenants(mock_embedder):
 # ── No documents ──────────────────────────────────────────────────────────────
 
 
-def test_no_documents_returns_404(mock_embedder, mock_openai_client):
+def test_no_documents_returns_404(mock_embedder, mock_llm_client):
     empty_store = MagicMock()
     empty_store.search_tenant_context.return_value = []
 
     app.dependency_overrides[get_embedder] = lambda: mock_embedder
     app.dependency_overrides[get_vector_store] = lambda: empty_store
-    app.dependency_overrides[get_openai_client] = lambda: mock_openai_client
+    app.dependency_overrides[get_llm_client] = lambda: mock_llm_client
     try:
         client = TestClient(app)
         resp = _query(client, tenant_id="new-tenant")
@@ -240,53 +240,53 @@ def test_query_is_stripped_before_embedding(client, mock_embedder):
 # ── LLM synthesis (Task 5.6 / 5.8) ────────────────────────────────────────────
 
 
-def test_openai_called_with_stream_true(client, mock_openai_client):
+def test_llm_called_with_stream_true(client, mock_llm_client):
     _query(client)
-    call_kwargs = mock_openai_client.chat.completions.create.call_args.kwargs
+    call_kwargs = mock_llm_client.chat.completions.create.call_args.kwargs
     assert call_kwargs["stream"] is True
 
 
-def test_openai_called_with_temperature_zero(client, mock_openai_client):
+def test_llm_called_with_temperature_zero(client, mock_llm_client):
     _query(client)
-    call_kwargs = mock_openai_client.chat.completions.create.call_args.kwargs
+    call_kwargs = mock_llm_client.chat.completions.create.call_args.kwargs
     assert call_kwargs["temperature"] == 0.0
 
 
-def test_openai_called_with_configured_model(client, mock_openai_client):
+def test_llm_called_with_configured_model(client, mock_llm_client):
     from app.config import settings
 
     _query(client)
-    call_kwargs = mock_openai_client.chat.completions.create.call_args.kwargs
-    assert call_kwargs["model"] == settings.openai_model
+    call_kwargs = mock_llm_client.chat.completions.create.call_args.kwargs
+    assert call_kwargs["model"] == settings.gemini_model
 
 
-def test_openai_messages_contain_query(client, mock_openai_client):
+def test_llm_messages_contain_query(client, mock_llm_client):
     _query(client, query="What is tenant isolation?")
-    messages = mock_openai_client.chat.completions.create.call_args.kwargs["messages"]
+    messages = mock_llm_client.chat.completions.create.call_args.kwargs["messages"]
     user_message = next(m for m in messages if m["role"] == "user")
     assert "What is tenant isolation?" in user_message["content"]
 
 
-def test_openai_system_prompt_contains_context_chunks(client, mock_openai_client):
+def test_llm_system_prompt_contains_context_chunks(client, mock_llm_client):
     _query(client)
-    messages = mock_openai_client.chat.completions.create.call_args.kwargs["messages"]
+    messages = mock_llm_client.chat.completions.create.call_args.kwargs["messages"]
     system_message = next(m for m in messages if m["role"] == "system")
     # Both chunk texts from _FAKE_CHUNKS must appear in the system prompt context.
     assert "ChromaDB stores vectors." in system_message["content"]
     assert "Tenant isolation uses where= filters." in system_message["content"]
 
 
-def test_openai_system_prompt_forbids_outside_knowledge(client, mock_openai_client):
+def test_llm_system_prompt_forbids_outside_knowledge(client, mock_llm_client):
     _query(client)
-    messages = mock_openai_client.chat.completions.create.call_args.kwargs["messages"]
+    messages = mock_llm_client.chat.completions.create.call_args.kwargs["messages"]
     system_message = next(m for m in messages if m["role"] == "system")
     # The prompt must instruct the model to stay within the provided context.
     assert "ONLY" in system_message["content"]
 
 
-def test_openai_called_exactly_once_per_request(client, mock_openai_client):
+def test_llm_called_exactly_once_per_request(client, mock_llm_client):
     _query(client)
-    mock_openai_client.chat.completions.create.assert_called_once()
+    mock_llm_client.chat.completions.create.assert_called_once()
 
 
 # ── synthesise_stream unit tests ──────────────────────────────────────────────
@@ -297,12 +297,12 @@ async def test_synthesise_stream_yields_tokens_in_order():
     from app.services.synthesis import synthesise_stream
 
     mock_client = AsyncMock()
-    mock_client.chat.completions.create.return_value = _fake_openai_stream(_FAKE_TOKENS)
+    mock_client.chat.completions.create.return_value = _fake_llm_stream(_FAKE_TOKENS)
 
     collected = [
         token
         async for token in synthesise_stream(
-            "My query", _FAKE_CHUNKS, mock_client, "gpt-4o-mini"
+            "My query", _FAKE_CHUNKS, mock_client, "gemini-3.5-flash"
         )
     ]
     assert collected == _FAKE_TOKENS
@@ -325,7 +325,7 @@ async def test_synthesise_stream_skips_empty_deltas():
     collected = [
         token
         async for token in synthesise_stream(
-            "My query", _FAKE_CHUNKS, mock_client, "gpt-4o-mini"
+            "My query", _FAKE_CHUNKS, mock_client, "gemini-3.5-flash"
         )
     ]
     assert collected == ["Hello"]

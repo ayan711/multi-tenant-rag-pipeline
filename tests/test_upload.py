@@ -1,10 +1,14 @@
 """
 Tests for Task 5.2 — File Upload Endpoint.
 Tests for Task 5.3 — SHA-256 Fingerprinting.
+Tests for Task 5.4 — Async Task Dispatch.
 Tests for storage abstraction layer.
 
 Covers:
-  - Happy path: valid PDF → 200 with filename, tenant_id, size_bytes, file_hash, locator
+  - Happy path: valid PDF → 202 with task_id + file_hash; task dispatched
+    via celery_app.send_task with (locator, tenant_id, file_hash)
+  - Already-ingested file → 200 with status=already_exists, no dispatch,
+    no disk write
   - Wrong content_type → 400
   - Non-PDF content (bad magic bytes) → 400
   - Missing tenant_id / file → 422
@@ -15,13 +19,13 @@ Covers:
 
 import hashlib
 import io
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.dependencies import get_celery_app, get_vector_store
 from app.main import app
 from app.storage.base import StorageBackend
 from app.storage.local import LocalStorage, get_local_storage
@@ -31,9 +35,25 @@ _FAKE_PDF = b"%PDF-1.4 fake pdf content"
 _NOT_PDF = b"this is plain text, not a pdf"
 
 
+def _mock_vector_store(exists: bool = False):
+    mock = MagicMock()
+    mock.document_exists.return_value = exists
+    return mock
+
+
+def _mock_celery_app(task_id: str = "fake-task-id"):
+    mock = MagicMock()
+    mock.send_task.return_value.id = task_id
+    return mock
+
+
 @pytest.fixture
 def client():
-    return TestClient(app)
+    """Default: document not yet indexed, Celery dispatch mocked (no broker needed)."""
+    app.dependency_overrides[get_vector_store] = lambda: _mock_vector_store(exists=False)
+    app.dependency_overrides[get_celery_app] = _mock_celery_app
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 
 
 def _upload(client, *, content=_FAKE_PDF, content_type="application/pdf", tenant_id="acme"):
@@ -46,18 +66,53 @@ def _upload(client, *, content=_FAKE_PDF, content_type="application/pdf", tenant
 # ── Happy path ────────────────────────────────────────────────────────────────
 
 
-def test_upload_valid_pdf_returns_200(client):
+def test_upload_valid_pdf_returns_202(client):
     resp = _upload(client)
-    assert resp.status_code == 200
+    assert resp.status_code == 202
 
 
 def test_upload_response_contains_expected_fields(client):
     body = _upload(client, tenant_id="acme").json()
-    assert body["filename"] == "doc.pdf"
-    assert body["tenant_id"] == "acme"
-    assert body["size_bytes"] == len(_FAKE_PDF)
+    assert body["task_id"] == "fake-task-id"
     assert "file_hash" in body
-    assert "locator" in body
+
+
+def test_upload_dispatches_task_with_locator_tenant_and_hash(tmp_path):
+    """celery_app.send_task must receive the storage locator, tenant_id, and file_hash."""
+    storage = LocalStorage(base_dir=str(tmp_path))
+    mock_celery = _mock_celery_app()
+
+    app.dependency_overrides[get_local_storage] = lambda: storage
+    app.dependency_overrides[get_vector_store] = lambda: _mock_vector_store(exists=False)
+    app.dependency_overrides[get_celery_app] = lambda: mock_celery
+    try:
+        client = TestClient(app)
+        body = _upload(client, tenant_id="acme").json()
+        expected_locator = str(tmp_path / f"{body['file_hash']}.pdf")
+        mock_celery.send_task.assert_called_once_with(
+            "enterprise_rag.ingest_document_pipeline",
+            args=[expected_locator, "acme", body["file_hash"]],
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+
+# ── Idempotency guard (Task 4.5, checked before dispatch) ──────────────────────
+
+
+def test_already_ingested_file_returns_200(client):
+    app.dependency_overrides[get_vector_store] = lambda: _mock_vector_store(exists=True)
+    resp = _upload(client)
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "already_exists", "file_hash": hashlib.sha256(_FAKE_PDF).hexdigest()}
+
+
+def test_already_ingested_file_skips_dispatch(client):
+    mock_celery = _mock_celery_app()
+    app.dependency_overrides[get_vector_store] = lambda: _mock_vector_store(exists=True)
+    app.dependency_overrides[get_celery_app] = lambda: mock_celery
+    _upload(client)
+    mock_celery.send_task.assert_not_called()
 
 
 # ── PDF validation ────────────────────────────────────────────────────────────
@@ -150,26 +205,19 @@ def test_storage_backend_can_be_overridden():
     """The route must use whatever backend is injected — not hardcode LocalStorage."""
     mock_storage = MagicMock(spec=StorageBackend)
     mock_storage.save.return_value = "mock://fake-locator"
+    mock_celery = _mock_celery_app()
 
     app.dependency_overrides[get_local_storage] = lambda: mock_storage
+    app.dependency_overrides[get_vector_store] = lambda: _mock_vector_store(exists=False)
+    app.dependency_overrides[get_celery_app] = lambda: mock_celery
     try:
         client = TestClient(app)
         resp = _upload(client)
-        assert resp.status_code == 200
-        assert resp.json()["locator"] == "mock://fake-locator"
+        assert resp.status_code == 202
         mock_storage.save.assert_called_once()
-    finally:
-        app.dependency_overrides.clear()
-
-
-def test_locator_in_response_matches_storage_output(tmp_path):
-    """locator in the response is exactly what storage.save() returned."""
-    storage = LocalStorage(base_dir=str(tmp_path))
-    app.dependency_overrides[get_local_storage] = lambda: storage
-    try:
-        client = TestClient(app)
-        body = _upload(client).json()
-        expected_path = str(tmp_path / f"{body['file_hash']}.pdf")
-        assert body["locator"] == expected_path
+        mock_celery.send_task.assert_called_once_with(
+            "enterprise_rag.ingest_document_pipeline",
+            args=["mock://fake-locator", "acme", resp.json()["file_hash"]],
+        )
     finally:
         app.dependency_overrides.clear()

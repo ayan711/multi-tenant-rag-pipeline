@@ -18,8 +18,10 @@
 from functools import lru_cache
 
 import redis.asyncio as aioredis
+from celery import Celery
 from openai import AsyncOpenAI
 
+from app.celery_app import celery_app
 from app.config import settings
 from app.embedder import LocalEmbedder
 from app.vector_db import VectorStoreManager
@@ -38,12 +40,24 @@ def get_vector_store() -> VectorStoreManager:
 
 
 @lru_cache(maxsize=1)
-def get_openai_client() -> AsyncOpenAI:
+def get_llm_client() -> AsyncOpenAI:
     # AsyncOpenAI is an httpx-based client; one instance is reused across requests.
-    return AsyncOpenAI(api_key=settings.openai_api_key.get_secret_value())
+    # base_url points it at Gemini's OpenAI-compatible endpoint instead of OpenAI's —
+    # the rest of the app (synthesis.py) is unaware of the swap.
+    return AsyncOpenAI(
+        api_key=settings.gemini_api_key.get_secret_value(),
+        base_url=settings.gemini_base_url,
+    )
 
 
 @lru_cache(maxsize=1)
 def get_redis_client() -> aioredis.Redis:
     # from_url parses redis://host:port/db — no connection is made until first command.
     return aioredis.Redis.from_url(settings.redis_url, decode_responses=True)
+
+
+@lru_cache(maxsize=1)
+def get_celery_app() -> Celery:
+    # celery_app is already a module-level singleton (app/celery_app.py);
+    # this just gives routes a swappable seam for dependency_overrides in tests.
+    return celery_app

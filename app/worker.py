@@ -25,60 +25,13 @@
 
 import os
 
-from celery import Celery
-
-from app.config import settings
+from app.celery_app import celery_app
 from app.embedder import LocalEmbedder
 from app.parser import DocumentParser
 from app.vector_db import VectorStoreManager
 
-# ---------------------------------------------------------------------------
-# Celery application instance
-#
-# broker_url   — Redis queue where FastAPI pushes task messages.
-#                The worker polls this constantly, waiting for work.
-#
-# result_backend — same Redis instance, different logical DB (db=0 here).
-#                  After a task finishes, the worker writes status + return
-#                  value here so callers can check progress via
-#                  AsyncResult(task_id).state / .result.
-#
-# Why the same Redis for both?  For a project of this scale it keeps ops
-# simple — one container, one URL.  In production you might separate them
-# to avoid broker messages and result data competing for memory.
-# ---------------------------------------------------------------------------
-celery_app = Celery(
-    "enterprise_rag",                 # logical name shown in Celery logs
-    broker=settings.redis_url,
-    backend=settings.redis_url,
-)
-
-# ---------------------------------------------------------------------------
-# Runtime configuration
-#
-# task_serializer / result_serializer / accept_content:
-#   JSON is explicit, human-readable, and safe against pickle deserialization
-#   attacks that can execute arbitrary code.  Celery's default is pickle;
-#   we override it here.
-#
-# task_track_started:
-#   By default a task's state jumps from PENDING → SUCCESS (or FAILURE).
-#   Setting this to True adds a STARTED state so Task 5.9's status-polling
-#   endpoint can distinguish "queued" from "actively running".
-#
-# timezone / enable_utc:
-#   Store all timestamps in UTC so logs are unambiguous regardless of where
-#   the worker process is running.
-# ---------------------------------------------------------------------------
-celery_app.conf.update(
-    task_serializer="json",
-    result_serializer="json",
-    accept_content=["json"],
-    task_track_started=True,
-    timezone="UTC",
-    enable_utc=True,
-    result_expires=3600,  # drop completed task results from Redis after 1 hour
-)
+# Celery app + config live in app/celery_app.py — the FastAPI process (Task 5.9)
+# imports the app from there too, without pulling in the singletons below.
 
 # ---------------------------------------------------------------------------
 # Module-level singletons — Task 4.2

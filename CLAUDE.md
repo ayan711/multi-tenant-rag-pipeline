@@ -4,7 +4,7 @@
 
 A production-grade, zero-cost Document Q&A (RAG) engine. Core idea: upload a PDF, ask questions, get answers grounded strictly in that document. Built for learning and interview prep.
 
-**Stack:** FastAPI · PyMuPDF · sentence-transformers (local) · ChromaDB · Celery · Redis · OpenAI (gpt-4o-mini) · Docker Compose · Streamlit (demo UI)
+**Stack:** FastAPI · PyMuPDF · sentence-transformers (local) · ChromaDB · Celery · Redis · Gemini (via OpenAI-compatible endpoint, `gemini-3.5-flash`) · Docker Compose · Streamlit (demo UI)
 
 ---
 
@@ -67,30 +67,33 @@ A production-grade, zero-cost Document Q&A (RAG) engine. Core idea: upload a PDF
 - [x] Task 5.1 — Web Server Foundation Initialization
 - [x] Task 5.2 — Asynchronous File Upload API Route
 - [x] Task 5.3 — Unique Fingerprint Identification Architecture
-- [ ] Task 5.4 — Non-Blocking Celery Offloading
+- [x] Task 5.4 — Non-Blocking Celery Offloading
 - [x] Task 5.5 — Secure RAG Completion API Route
 - [x] Task 5.6 — Zero-Temperature Synthesis Grounding
 - [x] Task 5.7 — Health Check Endpoint
 - [x] Task 5.8 — Streaming Query Response
-- [ ] Task 5.9 — Task Status Polling Endpoint
+- [x] Task 5.9 — Task Status Polling Endpoint
 
 ### Phase 6: System Validation & Interview Demos
-- [ ] Task 6.1 — Full Stack Runtime Execution
-- [ ] Task 6.2 — End-to-End File Processing Upload Check
-- [ ] Task 6.3 — Knowledge Ingestion Query Verification
-- [ ] Task 6.4 — Multi-Tenant Logical Security Firewall Audit
-- [ ] Task 6.5 — Retrieval Quality Evaluation (Golden Set)
+- [x] Task 6.1 — Full Stack Runtime Execution
+- [x] Task 6.2 — End-to-End File Processing Upload Check
+- [x] Task 6.3 — Knowledge Ingestion Query Verification
+- [x] Task 6.4 — Multi-Tenant Logical Security Firewall Audit
+- [x] Task 6.5 — Retrieval Quality Evaluation (Golden Set)
 
 ### Phase 7: Demo & Interview Readiness
-- [ ] Task 7.1 — Minimal Streamlit UI
+- [x] Task 7.1 — Minimal Streamlit UI
 - [ ] Task 7.2 — Architecture Diagram & README
+  - [x] Architecture diagrams (`architecture.md`) updated for Gemini/storage abstraction/UI, annotated with WHY notes
+  - [x] Code comment pass across `app/` (schemas were the main gap; routers/services already well-commented from earlier phases)
+  - [ ] `README.md` still pending
 
 ---
 
 ## Current Status
 
-**Last completed task:** Task 5.8 — Streaming Query Response
-**Next task:** Awaiting user instruction.
+**Last completed task:** Task 7.2 (partial) — architecture diagrams updated + code comment pass across `app/`
+**Next task:** Awaiting user instruction (Task 7.2 remainder — `README.md`).
 
 ---
 
@@ -123,5 +126,5 @@ enterprise-rag/
 | Vector store | ChromaDB (self-hosted Docker) | Free, persistent, supports metadata filters |
 | Tenant isolation | `where={"tenant_id": ...}` on every query | Enforced at DB layer, not app layer |
 | Async ingestion | Celery + Redis | Keeps HTTP response fast; PDF processing is slow |
-| LLM | `gpt-4o-mini` at `temperature=0.0` | Low cost, deterministic, grounded answers |
+| LLM | `gemini-3.5-flash` at `temperature=0.0`, via Gemini's OpenAI-compatible endpoint | Low cost, deterministic, grounded answers — swapped from OpenAI after the original key stopped working; the `openai` SDK's client/streaming code didn't need to change, only `base_url` |
 | Chunk size | 400 words, 50-word overlap | Balances context richness vs retrieval noise |

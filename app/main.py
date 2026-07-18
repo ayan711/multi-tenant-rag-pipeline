@@ -14,7 +14,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
 
-from app.routers import health, query, upload
+from app.routers import health, query, tasks, upload
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,7 @@ app = FastAPI(
 v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(upload.router)
 v1_router.include_router(query.router)
+v1_router.include_router(tasks.router)
 
 # ── Error handlers ────────────────────────────────────────────────────────────
 

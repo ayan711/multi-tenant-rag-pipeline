@@ -32,16 +32,16 @@ class Settings(BaseSettings):
 
     # ── Secrets ──────────────────────────────────────────────────────────────
     #
-    # SecretStr wraps the key so that str(settings.openai_api_key) prints
+    # SecretStr wraps the key so that str(settings.gemini_api_key) prints
     # '**********' instead of the real value.  This prevents the key from
     # leaking into logs, tracebacks, or debug output.
     #
-    # When you actually need the raw string (e.g. to pass to the OpenAI
-    # client), call:  settings.openai_api_key.get_secret_value()
+    # When you actually need the raw string (e.g. to pass to the OpenAI-SDK
+    # client pointed at Gemini), call:  settings.gemini_api_key.get_secret_value()
     #
     # No default value → pydantic raises ValidationError at startup if this
     # variable is missing from the environment.
-    openai_api_key: SecretStr
+    gemini_api_key: SecretStr
 
     # ── Infrastructure connection coordinates ─────────────────────────────────
     #
@@ -74,8 +74,14 @@ class Settings(BaseSettings):
     # cached in ~/.cache/huggingface/hub/.
     embedding_model: str = "all-MiniLM-L6-v2"
 
-    # OpenAI model used for answer synthesis at query time.
-    openai_model: str = "gpt-4o-mini"
+    # Gemini model used for answer synthesis at query time, called through
+    # Google's OpenAI-compatible endpoint (see gemini_base_url below) so the
+    # rest of the app can keep using the `openai` SDK's client/streaming API.
+    gemini_model: str = "gemini-3.5-flash"
+
+    # Google's OpenAI-compatibility base URL — swapping providers again later
+    # only means changing this + gemini_api_key, not the client code.
+    gemini_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai/"
 
 
 @lru_cache
@@ -96,6 +102,6 @@ def get_settings() -> Settings:
 # Module-level singleton for direct imports used by most modules:
 #
 #   from app.config import settings
-#   client = OpenAI(api_key=settings.openai_api_key.get_secret_value())
+#   client = OpenAI(api_key=settings.gemini_api_key.get_secret_value(), base_url=settings.gemini_base_url)
 #
 settings = get_settings()
