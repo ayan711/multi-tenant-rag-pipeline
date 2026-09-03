@@ -1,0 +1,40 @@
+# Runs the pytest suite on every push/PR to main.
+#
+# No live infrastructure needed: ChromaDB is mocked globally in
+# tests/conftest.py, and the one test that touches a real Redis
+# (tests/test_worker.py::test_redis_broker_is_reachable, @pytest.mark.integration)
+# skips itself when it can't connect — see its docstring. So this workflow
+# is just "install deps, run pytest", no docker-compose service containers.
+name: Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+
+      - name: Run tests
+        env:
+          # Not a real secret — app/config.py requires this field to be set
+          # at import time (fail-fast validation), but no test in the suite
+          # makes a live Gemini API call, so any placeholder value works.
+          GEMINI_API_KEY: ci-placeholder-key
+        run: pytest -v
