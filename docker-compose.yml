@@ -1,0 +1,125 @@
+# =============================================================================
+# Enterprise RAG — Docker Compose: Infrastructure Services
+# =============================================================================
+#
+# This file spins up the two *stateless-from-the-app's-perspective* services:
+#   1. redis_broker  — Celery's message channel and task-result store
+#   2. chroma_server — the self-hosted vector database
+#
+# The FastAPI app, Celery worker, and Streamlit UI run as HOST processes
+# (not containers) so you can iterate on Python code without rebuilding
+# images. Only the infrastructure that doesn't change goes in here.
+#
+# Usage:
+#   Start (background):  docker-compose up -d
+#   Check health:        docker-compose ps
+#   Stop + keep data:    docker-compose stop
+#   Stop + wipe data:    docker-compose down -v
+#
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # SERVICE 1: Redis
+  #
+  # Role in this project:
+  #   - Celery BROKER:  FastAPI pushes task messages here; the worker polls
+  #     and pulls them. Think of Redis as the post office, and tasks as letters.
+  #   - Celery BACKEND: when a worker finishes a task, it writes the result
+  #     (status + return value) back here so FastAPI can read it via
+  #     AsyncResult(task_id).
+  #
+  # Why Alpine? The redis:alpine image is ~10 MB vs ~100 MB for the Debian
+  # variant. For a broker that does nothing but pass messages around, there
+  # is no reason to carry a full OS.
+  #
+  # Why no volume? Redis is used purely as a transient bus here — tasks live
+  # in the queue for seconds, and task results only need to survive until the
+  # client polls them. We don't need durability across restarts.
+  # ---------------------------------------------------------------------------
+  redis_broker:
+    image: redis:7-alpine
+    container_name: rag_redis
+
+    ports:
+      # Format: "HOST_PORT:CONTAINER_PORT"
+      # Host port is 6380 (not 6379) because another project's Redis container
+      # already owns 6379 on this machine. The container still listens on its
+      # default 6379 internally — only the host-side mapping changes.
+      # REDIS_URL in .env is set to redis://localhost:6380/0 to match.
+      - "6380:6379"
+
+    # Automatically restart this container if Docker restarts (e.g. after a
+    # reboot). "unless-stopped" means: restart always, EXCEPT when you
+    # explicitly ran `docker-compose stop`.
+    restart: unless-stopped
+
+    healthcheck:
+      # redis-cli PING → the server replies "PONG" if it's healthy.
+      # Docker marks the container unhealthy if this fails retries times.
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s      # run the check every 5 seconds
+      timeout: 3s       # if no reply within 3s, count as failed
+      retries: 5        # declare unhealthy after 5 consecutive failures
+      start_period: 5s  # give Redis time to boot before the first check
+
+
+  # ---------------------------------------------------------------------------
+  # SERVICE 2: ChromaDB
+  #
+  # Role in this project:
+  #   The vector store. The Celery worker writes embeddings + metadata here
+  #   after ingesting a PDF. FastAPI queries it at request time to retrieve
+  #   the top-N most relevant chunks for a query.
+  #
+  # Why pin the image version?
+  #   The Python client in requirements.txt is pinned to 0.5.23. The server
+  #   image should match — a version mismatch can cause protocol errors.
+  #
+  # Why IS_PERSISTENT=TRUE?
+  #   By default, ChromaDB runs in ephemeral in-memory mode. Setting this env
+  #   var switches it to on-disk storage so vectors survive container restarts.
+  #
+  # Why ANONYMIZED_TELEMETRY=false?
+  #   ChromaDB phones home with usage statistics by default. We disable it
+  #   for clean local development (no outbound noise, no privacy concern).
+  # ---------------------------------------------------------------------------
+  chroma_server:
+    image: chromadb/chroma:0.5.23
+    container_name: rag_chroma
+
+    ports:
+      # ChromaDB's HTTP API runs on 8000 inside the container.
+      # IMPORTANT: FastAPI also defaults to 8000 — we run FastAPI on 8001
+      # (see Task 5.1) to avoid this collision.
+      - "8000:8000"
+
+    environment:
+      - IS_PERSISTENT=TRUE          # write vectors to disk (see volume below)
+      - ANONYMIZED_TELEMETRY=false  # disable calling home to Chroma HQ
+
+    volumes:
+      # Bind mount: ./chroma_data on the HOST maps to /chroma/chroma inside
+      # the container (ChromaDB's default data directory).
+      #
+      # This means: even if you `docker-compose down` and recreate the
+      # container, your vectors are safe — they live on the host filesystem.
+      #
+      # The chroma_data/ directory is created automatically by Docker if it
+      # doesn't exist, but we pre-create it (with .gitkeep) so git tracks the
+      # directory while .gitignore keeps the actual data files out of source
+      # control.
+      - ./chroma_data:/chroma/chroma
+
+    restart: unless-stopped
+
+    healthcheck:
+      # ChromaDB exposes a /api/v1/heartbeat endpoint that returns 200 OK
+      # when the server is ready to accept connections.
+      # curl -sf: -s = silent (no progress bar), -f = fail on HTTP error codes
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/heartbeat || exit 1"]
+      interval: 10s      # ChromaDB is slower to boot than Redis
+      timeout: 5s
+      retries: 5
+      start_period: 15s  # allow extra time for the Python server to initialise
