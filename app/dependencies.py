@@ -13,12 +13,23 @@
 #
 # Testing: FastAPI's app.dependency_overrides replaces the provider function
 # entirely, so tests never touch the cache or construct real objects.
+#
+# Error handling: a provider that raises during construction (e.g. ChromaDB
+# unreachable) fails BEFORE the route body runs — FastAPI resolves Depends()
+# ahead of the endpoint function. Left uncaught, that surfaces as a raw 500
+# from main.py's catch-all handler, indistinguishable from a real app bug.
+# Providers that make a network call at construction time catch that failure
+# and re-raise as HTTPException(503) instead, so callers get a clean signal
+# that the dependency is down rather than that the request was malformed.
+# lru_cache never caches a raised exception, so the next request retries
+# construction fresh once the dependency recovers.
 # ─────────────────────────────────────────────────────────────────────────────
 
 from functools import lru_cache
 
 import redis.asyncio as aioredis
 from celery import Celery
+from fastapi import HTTPException, status
 from openai import AsyncOpenAI
 
 from app.celery_app import celery_app
@@ -36,7 +47,13 @@ def get_embedder() -> LocalEmbedder:
 @lru_cache(maxsize=1)
 def get_vector_store() -> VectorStoreManager:
     # Opens an HTTP connection to the ChromaDB server on first call.
-    return VectorStoreManager()
+    try:
+        return VectorStoreManager()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Vector store is unavailable",
+        ) from exc
 
 
 @lru_cache(maxsize=1)
