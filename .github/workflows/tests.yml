@@ -1,0 +1,55 @@
+# Runs the pytest suite on every push/PR to main.
+#
+# ChromaDB is mocked globally in tests/conftest.py, so no ChromaDB service
+# is needed. Redis IS needed for real, though: several Celery tests
+# (tests/test_worker.py::TestWorkerSmokeTest, tests/test_tasks.py::
+# TestRealDispatchAndLookup) run tasks in Celery's "eager" mode, but
+# app/celery_app.py forces task_store_eager_result=True, so even eager
+# tasks write their result through the real Redis result backend — eager
+# mode skips the broker, not the backend. The `services:` block below
+# gives them a real Redis on localhost:6379 (config.py's default
+# redis_url, matching what CI sees with no .env file present).
+name: Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements-dev.txt
+
+      - name: Run tests
+        env:
+          # Not a real secret — app/config.py requires this field to be set
+          # at import time (fail-fast validation), but no test in the suite
+          # makes a live Gemini API call, so any placeholder value works.
+          GEMINI_API_KEY: ci-placeholder-key
+        run: pytest -v

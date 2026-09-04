@@ -1,0 +1,13 @@
+# =============================================================================
+# Enterprise RAG — Dev/Test-Only Dependencies
+# =============================================================================
+# Not needed to run the app itself (see requirements.txt) — only to run the
+# test suite. Kept separate so `requirements.txt` stays a minimal, accurate
+# picture of what production actually needs.
+#
+#   pip install -r requirements-dev.txt   # installs requirements.txt too
+# =============================================================================
+
+-r requirements.txt
+
+pytest==9.1.1

@@ -83,17 +83,17 @@ A production-grade, zero-cost Document Q&A (RAG) engine. Core idea: upload a PDF
 
 ### Phase 7: Demo & Interview Readiness
 - [x] Task 7.1 — Minimal Streamlit UI
-- [ ] Task 7.2 — Architecture Diagram & README
+- [x] Task 7.2 — Architecture Diagram & README
   - [x] Architecture diagrams (`architecture.md`) updated for Gemini/storage abstraction/UI, annotated with WHY notes
   - [x] Code comment pass across `app/` (schemas were the main gap; routers/services already well-commented from earlier phases)
-  - [ ] `README.md` still pending
+  - [x] `README.md` — overview, architecture summary, API surface, quickstart, testing, known limitations, doc links
 
 ---
 
 ## Current Status
 
-**Last completed task:** Task 7.2 (partial) — architecture diagrams updated + code comment pass across `app/`
-**Next task:** Awaiting user instruction (Task 7.2 remainder — `README.md`).
+**Last completed task:** Ad hoc — added GitHub Actions CI (`.github/workflows/tests.yml`), runs the full pytest suite on every push/PR to `main`. No service containers or secrets needed (ChromaDB is mocked globally, the one Redis-dependent test self-skips). All phases in the checklist are complete.
+**Next task:** Awaiting user instruction. (Live app hosting was discussed but scoped out for now — CI only, per user's choice.)
 
 ---
 

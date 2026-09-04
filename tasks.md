@@ -14,7 +14,7 @@ Production-grade, zero-cost Document Q&A engine. Work through tasks sequentially
 | 4 — Async Processing Engine | 5 | 5 |
 | 5 — FastAPI Gateway | 9 | 9 |
 | 6 — System Validation | 5 | 5 |
-| 7 — Demo & Interview Readiness | 1 | 2 |
+| 7 — Demo & Interview Readiness | 2 | 2 |
 
 ---
 
@@ -176,6 +176,6 @@ Production-grade, zero-cost Document Q&A engine. Work through tasks sequentially
 - [x] **Task 7.1** — Streamlit UI
   - Single-page app (`ui.py`): file uploader + chat input wired to the FastAPI endpoints.
 
-- [ ] **Task 7.2** — Architecture Diagram & README
+- [x] **Task 7.2** — Architecture Diagram & README
   - [x] Data-flow diagrams in `architecture.md`: system overview, ingestion, query (RAG), task-status poll, deletion, tenant isolation, Streamlit UI session, deployment topology — updated for Gemini/storage-abstraction/UI and annotated with WHY notes per diagram.
-  - [ ] `README.md` covering setup, env vars, and how to run each component. (`RUNNING.md` covers the "how to run" part already; README still pending.)
+  - [x] `README.md` covering overview, architecture summary, API surface, quickstart, testing, known limitations, and links to the other project docs.
