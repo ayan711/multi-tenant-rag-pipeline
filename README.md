@@ -83,6 +83,7 @@ Step-by-step run instructions per process, plus a combined health-check snippet 
 ## Testing
 
 ```bash
+pip install -r requirements-dev.txt   # adds pytest on top of requirements.txt
 pytest
 ```
 
