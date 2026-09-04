@@ -1,10 +1,14 @@
 # Runs the pytest suite on every push/PR to main.
 #
-# No live infrastructure needed: ChromaDB is mocked globally in
-# tests/conftest.py, and the one test that touches a real Redis
-# (tests/test_worker.py::test_redis_broker_is_reachable, @pytest.mark.integration)
-# skips itself when it can't connect — see its docstring. So this workflow
-# is just "install deps, run pytest", no docker-compose service containers.
+# ChromaDB is mocked globally in tests/conftest.py, so no ChromaDB service
+# is needed. Redis IS needed for real, though: several Celery tests
+# (tests/test_worker.py::TestWorkerSmokeTest, tests/test_tasks.py::
+# TestRealDispatchAndLookup) run tasks in Celery's "eager" mode, but
+# app/celery_app.py forces task_store_eager_result=True, so even eager
+# tasks write their result through the real Redis result backend — eager
+# mode skips the broker, not the backend. The `services:` block below
+# gives them a real Redis on localhost:6379 (config.py's default
+# redis_url, matching what CI sees with no .env file present).
 name: Tests
 
 on:
@@ -16,6 +20,17 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4

@@ -89,9 +89,9 @@ pytest
 
 Unit tests cover the parser, chunker, and embedder in isolation; integration tests exercise ChromaDB tenant isolation, the Celery pipeline, and the API routes end-to-end. Tests live in `tests/`, mirroring the `app/` structure.
 
-ChromaDB is mocked globally for the whole suite (`tests/conftest.py`), so no Docker services are required to run `pytest` locally. The one test that touches a real Redis (`tests/test_worker.py::test_redis_broker_is_reachable`, marked `@pytest.mark.integration`) skips itself when Redis isn't reachable rather than failing.
+ChromaDB is mocked globally for the whole suite (`tests/conftest.py`), so it never needs to be running. Redis does need to be running, though (`docker compose up -d`) — several Celery tests exercise the real result backend (see `app/celery_app.py`'s `task_store_eager_result=True`), and one (`tests/test_worker.py::test_redis_broker_is_reachable`, marked `@pytest.mark.integration`) skips itself only if Redis isn't reachable.
 
-**CI:** every push/PR to `main` runs the full suite via GitHub Actions ([.github/workflows/tests.yml](.github/workflows/tests.yml)) — no external services or secrets required.
+**CI:** every push/PR to `main` runs the full suite via GitHub Actions ([.github/workflows/tests.yml](.github/workflows/tests.yml)), which spins up a throwaway Redis service container — no ChromaDB needed there either, and no secrets required.
 
 `scripts/` holds standalone evaluation tools used during development, not part of the test suite:
 
